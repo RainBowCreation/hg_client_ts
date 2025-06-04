@@ -23,4 +23,4 @@ dist-ssr
 *.sln
 *.sw?
 
-src/module_bindings
+*/module_bindings
