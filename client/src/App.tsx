@@ -85,8 +85,6 @@ function App() {
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [conn, setConn] = useState<DbConnection | null>(null);
 
-  console.log('SpacetimeDB Quickstart Chat Client');
-
   useEffect(() => {
     const subscribeToQueries = (conn: DbConnection, queries: string[]) => {
       conn
