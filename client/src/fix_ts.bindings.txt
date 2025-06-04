@@ -1,0 +1,44 @@
+#1
+Get-ChildItem -Path .\module_bindings -Recurse -File | ForEach-Object {
+  $content = Get-Content -Raw -Path $_.FullName
+  $pattern = 'import \{\s*AlgebraicType,\s*AlgebraicValue,\s*BinaryReader,\s*BinaryWriter,\s*CallReducerFlags,\s*ConnectionId,\s*DbConnectionBuilder,\s*DbConnectionImpl,\s*DbContext,\s*ErrorContextInterface,\s*Event,\s*EventContextInterface,\s*Identity,\s*ProductType,\s*ProductTypeElement,\s*ReducerEventContextInterface,\s*SubscriptionBuilderImpl,\s*SubscriptionEventContextInterface,\s*SumType,\s*SumTypeVariant,\s*TableCache,\s*TimeDuration,\s*Timestamp,\s*deepEqual,\s*\} from "@clockworklabs/spacetimedb-sdk";'
+  $replace = @'
+import {
+  AlgebraicType,
+  AlgebraicValue,
+  BinaryReader,
+  BinaryWriter,
+  type CallReducerFlags,
+  ConnectionId,
+  DbConnectionBuilder,
+  DbConnectionImpl,
+  type DbContext,
+  type ErrorContextInterface,
+  type Event,
+  type EventContextInterface,
+  Identity,
+  ProductType,
+  ProductTypeElement,
+  type ReducerEventContextInterface,
+  SubscriptionBuilderImpl,
+  type SubscriptionEventContextInterface,
+  SumType,
+  SumTypeVariant,
+  TableCache,
+  TimeDuration,
+  Timestamp,
+  deepEqual,
+} from "@clockworklabs/spacetimedb-sdk";
+'@
+  $newContent = [regex]::Replace($content, $pattern, $replace)
+  if ($newContent -ne $content) { Set-Content -Path $_.FullName -Value $newContent }
+}
+
+# 2
+Get-ChildItem -Path .\module_bindings -Recurse -File | ForEach-Object {
+  $content = Get-Content -Raw -Path $_.FullName
+  $pattern = 'import { EventContext, Reducer, RemoteReducers, RemoteTables } from ".";'
+  $replace = 'import { type EventContext, type Reducer, RemoteReducers, RemoteTables } from ".";'
+  $newContent = [regex]::Replace($content, $pattern, $replace)
+  if ($newContent -ne $content) { Set-Content -Path $_.FullName -Value $newContent }
+}
