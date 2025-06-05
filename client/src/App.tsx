@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Identity } from '@clockworklabs/spacetimedb-sdk';
+import { Identity, Timestamp } from '@clockworklabs/spacetimedb-sdk';
 import './App.css';
 import { DbConnection, type ErrorContext, type EventContext, Message, User } from './module_bindings';
 
@@ -126,7 +126,7 @@ function App() {
     setConn(
       DbConnection.builder()
         .withUri('ws://localhost:3000')
-        .withModuleName('quickstart-chat')
+        .withModuleName('hardcore-gacha')
         .withToken(localStorage.getItem('auth_token') || '')
         .onConnect(onConnect)
         .onDisconnect(onDisconnect)
@@ -188,6 +188,14 @@ function App() {
     e.preventDefault();
     setNewMessage("");
     conn.reducers.sendMessage(newMessage);
+  };
+
+  const onGenerateSeed = () => {
+    const start = Timestamp.now();
+    setNewMessage("");
+    conn.reducers.getRandomSeed();
+    const end = Timestamp.now();
+    console.log(end.__timestamp_micros_since_unix_epoch__-start.__timestamp_micros_since_unix_epoch__);
   };
 
   return (
@@ -254,6 +262,7 @@ function App() {
           ></textarea>
           <button type="submit">Send</button>
         </form>
+        <button onClick={onGenerateSeed}>Generate</button>
       </div>
     </div>
   );

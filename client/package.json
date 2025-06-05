@@ -1,5 +1,5 @@
 {
-  "name": "client",
+  "name": "hg_client_ts",
   "private": true,
   "version": "0.0.0",
   "type": "module",
