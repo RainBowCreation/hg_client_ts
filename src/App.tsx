@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Identity, Timestamp } from '@clockworklabs/spacetimedb-sdk';
+import { Identity } from '@clockworklabs/spacetimedb-sdk';
 import './App.css';
 import { DbConnection, type ErrorContext, type EventContext, Message, User } from './module_bindings';
 
