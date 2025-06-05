@@ -191,12 +191,8 @@ function App() {
   };
 
   const onGenerateSeed = () => {
-    const start = Timestamp.now();
     setNewMessage("");
-    console.log(newMessage);
     conn.reducers.getRandomSeed(newMessage);
-    const end = Timestamp.now();
-    console.log(end.__timestamp_micros_since_unix_epoch__-start.__timestamp_micros_since_unix_epoch__);
   };
 
   return (
