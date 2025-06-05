@@ -193,7 +193,8 @@ function App() {
   const onGenerateSeed = () => {
     const start = Timestamp.now();
     setNewMessage("");
-    conn.reducers.getRandomSeed();
+    console.log(newMessage);
+    conn.reducers.getRandomSeed(newMessage);
     const end = Timestamp.now();
     console.log(end.__timestamp_micros_since_unix_epoch__-start.__timestamp_micros_since_unix_epoch__);
   };
@@ -260,9 +261,11 @@ function App() {
             value={newMessage}
             onChange={e => setNewMessage(e.target.value)}
           ></textarea>
-          <button type="submit">Send</button>
+          <div className="columns">
+            <button type="submit">Send</button>
+            <button onClick={onGenerateSeed}>Generate</button>
+          </div>
         </form>
-        <button onClick={onGenerateSeed}>Generate</button>
       </div>
     </div>
   );

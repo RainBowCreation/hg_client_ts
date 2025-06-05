@@ -93,6 +93,12 @@
   margin-bottom: 0.25rem;
 }
 
+.columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
 /* Distinct background for the textarea */
 .new-message form textarea {
   font-family: monospace;
