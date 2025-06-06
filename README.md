@@ -58,4 +58,6 @@ mkdir -p src/module_bindings
 
 spacetime generate --lang typescript --out-dir src/module_bindings --project-path ../server
 
+do fixbinginsgs
+
 npm run dev
