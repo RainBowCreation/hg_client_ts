@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Identity } from '@clockworklabs/spacetimedb-sdk';
 import './App.css';
 import { DbConnection, type ErrorContext, type EventContext, Message, User } from './module_bindings';
+import { hash_sha256_wasm } from "../../../shared/bindgen/pkg";
 
 
 export type PrettyMessage = {
@@ -192,7 +193,8 @@ function App() {
 
   const onGenerateSeed = () => {
     setNewMessage("");
-    conn.reducers.getRandomSeed(newMessage);
+    conn.reducers.getRandomSeed(newMessage); // call hash sha256 at server
+    console.log(hash_sha256_wasm(newMessage)); // call hash sha256 at client
   };
 
   return (
