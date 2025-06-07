@@ -56,8 +56,10 @@ export default tseslint.config({
 
 mkdir -p src/module_bindings
 
-spacetime generate --lang typescript --out-dir src/module_bindings --project-path ../server
+spacetime generate --lang typescript --out-dir src/module_bindings --project-path ../../server
 
+cd src
 do fixbinginsgs
+cd ..
 
 npm run dev
