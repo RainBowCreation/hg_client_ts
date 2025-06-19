@@ -1,92 +1,51 @@
+// This is the updated main application component for the React client.
+// CORRECTED: Uses the DbConnection builder pattern from the auto-generated bindings.
+
 import React, { useEffect, useState } from 'react';
+// CORRECTED: Identity is imported from the main SDK, but DbConnection comes from bindings.
 import { Identity } from '@clockworklabs/spacetimedb-sdk';
 import './App.css';
-import { DbConnection, type ErrorContext, type EventContext, Message, User } from './module_bindings';
-import { hash_sha256_wasm } from "../../../shared/bindgen/pkg";
+// CORRECTED: Importing DbConnection and other necessary types from the generated bindings file.
+import { DbConnection, SecretHistory, ServerHashLog } from './module_bindings';
 
+// --- WASM Setup ---
 
-export type PrettyMessage = {
-  senderName: string;
-  text: string;
-};
+// Import the functions directly from the wasm-bindgen generated package.
+import init, { hash_random_wasm } from '../pkg';
 
-function useMessages(conn: DbConnection | null): Message[] {
-  const [messages, setMessages] = useState<Message[]>([]);
-
-  useEffect(() => {
-    if (!conn) return;
-    const onInsert = (_ctx: EventContext, message: Message) => {
-      setMessages(prev => [...prev, message]);
-    };
-    conn.db.message.onInsert(onInsert);
-
-    const onDelete = (_ctx: EventContext, message: Message) => {
-      setMessages(prev =>
-        prev.filter(
-          m =>
-            m.text !== message.text &&
-            m.sent !== message.sent &&
-            m.sender !== message.sender
-        )
-      );
-    };
-    conn.db.message.onDelete(onDelete);
-
-    return () => {
-      conn.db.message.removeOnInsert(onInsert);
-      conn.db.message.removeOnDelete(onDelete);
-    };
-  }, [conn]);
-
-  return messages;
-}
-
-function useUsers(conn: DbConnection | null): Map<string, User> {
-  const [users, setUsers] = useState<Map<string, User>>(new Map());
-
-  useEffect(() => {
-    if (!conn) return;
-    const onInsert = (_ctx: EventContext, user: User) => {
-      setUsers(prev => new Map(prev.set(user.identity.toHexString(), user)));
-    };
-    conn.db.user.onInsert(onInsert);
-
-    const onUpdate = (_ctx: EventContext, oldUser: User, newUser: User) => {
-      setUsers(prev => {
-        prev.delete(oldUser.identity.toHexString());
-        return new Map(prev.set(newUser.identity.toHexString(), newUser));
-      });
-    };
-    conn.db.user.onUpdate(onUpdate);
-
-    const onDelete = (_ctx: EventContext, user: User) => {
-      setUsers(prev => {
-        prev.delete(user.identity.toHexString());
-        return new Map(prev);
-      });
-    };
-    conn.db.user.onDelete(onDelete);
-
-    return () => {
-      conn.db.user.removeOnInsert(onInsert);
-      conn.db.user.removeOnUpdate(onUpdate);
-      conn.db.user.removeOnDelete(onDelete);
-    };
-  }, [conn]);
-
-  return users;
-}
+// --- React Component ---
 
 function App() {
-  const [newName, setNewName] = useState('');
-  const [settingName, setSettingName] = useState(false);
-  const [systemMessage, setSystemMessage] = useState('');
-  const [newMessage, setNewMessage] = useState('');
-  const [connected, setConnected] = useState<boolean>(false);
-  const [identity, setIdentity] = useState<Identity | null>(null);
+  // State for the SpacetimeDB connection and client identity
+  // CORRECTED: Changed state variable to `conn` to match the DbConnection pattern.
   const [conn, setConn] = useState<DbConnection | null>(null);
+  const [identity, setIdentity] = useState<Identity | null>(null);
+  const [connected, setConnected] = useState<boolean>(false);
 
+  // State to track if our WASM module has been initialized
+  const [wasmInitialized, setWasmInitialized] = useState<boolean>(false);
+
+  // State for our application data, subscribed from the server
+  const [secretHistory, setSecretHistory] = useState<SecretHistory[]>([]);
+  const [serverHashLog, setServerHashLog] = useState<ServerHashLog[]>([]);
+
+  // State to display the results of our client-side actions
+  const [lastClientHash, setLastClientHash] = useState<string>("");
+
+  // --- Effect for Initializing WASM and SpacetimeDB connection ---
   useEffect(() => {
+    // Initialize our WASM module from the `hg_shared_bindgen` crate.
+    async function initWasm() {
+      try {
+        await init(); // This loads and initializes the WASM module.
+        setWasmInitialized(true);
+        console.log("WASM module initialized successfully.");
+      } catch (err) {
+        console.error("Error initializing WASM module:", err);
+      }
+    }
+    initWasm();
+
     const subscribeToQueries = (conn: DbConnection, queries: string[]) => {
       conn
         ?.subscriptionBuilder()
@@ -96,174 +55,145 @@ function App() {
         .subscribe(queries);
     };
 
-    const onConnect = (
-      conn: DbConnection,
-      identity: Identity,
-      token: string
-    ) => {
-      setIdentity(identity);
-      setConnected(true);
-      localStorage.setItem('auth_token', token);
-      console.log(
-        'Connected to SpacetimeDB with identity:',
-        identity.toHexString()
-      );
-      conn.reducers.onSendMessage(() => {
-        console.log('Message sent.');
-      });
+    // --- Connection Logic using the Builder Pattern ---
 
-      subscribeToQueries(conn, ['SELECT * FROM message', 'SELECT * FROM user']);
+    const onConnect = (connection: DbConnection, self_identity: Identity, token: string) => {
+      setConn(connection);
+      setIdentity(self_identity);
+      setConnected(true);
+      if (token) localStorage.setItem('auth_token', token);
+      console.log("Connected to SpacetimeDB!");
+
+      // Subscribe to tables AFTER connection is established.
+      subscribeToQueries(connection, [
+        "SELECT * FROM secret_history",
+        "SELECT * FROM server_hash_log",
+      ]);
+
+      // Register table update callbacks on the new connection object.
+      registerCallbacks(connection);
     };
 
     const onDisconnect = () => {
-      console.log('Disconnected from SpacetimeDB');
       setConnected(false);
+      console.log("Disconnected.");
     };
+    
+    // Build the connection. The `.build()` method initiates the connection attempt.
+    DbConnection.builder()
+      .withUri('ws://localhost:3000')
+      .withModuleName('hardcore-gacha')
+      .withToken(localStorage.getItem('auth_token') || '')
+      .onConnect(onConnect)
+      .onDisconnect(onDisconnect)
+      .build();
 
-    const onConnectError = (_ctx: ErrorContext, err: Error) => {
-      console.log('Error connecting to SpacetimeDB:', err);
-    };
+  }, []); // This effect runs only once on component mount
 
-    setConn(
-      DbConnection.builder()
-        .withUri('ws://localhost:3000')
-        .withModuleName('hardcore-gacha')
-        .withToken(localStorage.getItem('auth_token') || '')
-        .onConnect(onConnect)
-        .onDisconnect(onDisconnect)
-        .onConnectError(onConnectError)
-        .build()
-    );
-  }, []);
-  useEffect(() => {
-    if (!conn) return;
-    conn.db.user.onInsert((_ctx, user) => {
-      if (user.online) {
-        const name = user.name || user.identity.toHexString().substring(0, 8);
-        setSystemMessage(prev => prev + `\n${name} has connected.`);
+  // Function to register all our table update handlers
+  const registerCallbacks = (dbConn: DbConnection) => {
+      // Callback for when a new secret is inserted into the history
+      dbConn.db.secretHistory.onInsert((_ctx, secretRow) => {
+        setSecretHistory(prev => {
+          const newHistory = [...prev, secretRow];
+          // Keep the history sorted by time
+          return newHistory.sort((a, b) => Number(a.validFromTimeMicros - b.validFromTimeMicros));
+        });
+      });
+
+      // Callback for when a new server-side hash is logged
+      dbConn.db.serverHashLog.onInsert((_ctx, hashLogRow) => {
+        // We only care about hashes requested by our own identity
+        if(identity && hashLogRow.requester.isEqual(identity)) {
+          console.log("✅ Received our requested hash from the server:", hashLogRow);
+          // Add to the front of the array to show the newest first
+          setServerHashLog(prev => [hashLogRow, ...prev]);
+        }
+      });
+  };
+
+  // --- Helper function to find the correct secret for a given time ---
+  const findSecretForTime = (time_ms: number): string | null => {
+    const time_micros = BigInt(time_ms) * 1000n;
+    let activeSecret = null;
+    for (let i = secretHistory.length - 1; i >= 0; i--) {
+      const secret = secretHistory[i];
+      if (secret.validFromTimeMicros <= time_micros) {
+        activeSecret = secret.value;
+        break; 
       }
-    });
-    conn.db.user.onUpdate((_ctx, oldUser, newUser) => {
-      const name =
-        newUser.name || newUser.identity.toHexString().substring(0, 8);
-      if (oldUser.online === false && newUser.online === true) {
-        setSystemMessage(prev => prev + `\n${name} has connected.`);
-      } else if (oldUser.online === true && newUser.online === false) {
-        setSystemMessage(prev => prev + `\n${name} has disconnected.`);
-      }
-    });
-  }, [conn]);
+    }
+    return activeSecret;
+  };
 
-  const messages = useMessages(conn);
-  const users = useUsers(conn);
+  // --- Action Handlers ---
 
-  const prettyMessages: PrettyMessage[] = messages
-    .sort((a, b) => (a.sent > b.sent ? 1 : -1))
-    .map(message => ({
-      senderName:
-        users.get(message.sender.toHexString())?.name ||
-        message.sender.toHexString().substring(0, 8),
-      text: message.text,
-    }));
+  const handleGenerateHashes = () => {
+    if (!wasmInitialized || !conn) {
+      alert("WASM or DB not ready.");
+      return;
+    }
 
-  if (!conn || !connected || !identity) {
-    return (
-      <div className="App">
-        <h1>Connecting...</h1>
-      </div>
-    );
+    // --- 1. Generate Client-Side Hash ---
+    const clientTimeMs = BigInt(Date.now());
+    const secretToUse = findSecretForTime(Number(clientTimeMs));
+
+    if (secretToUse) {
+      const clientHash = hash_random_wasm(clientTimeMs, secretToUse);
+      setLastClientHash(clientHash);
+      console.log(`Client-side hash generated: ${clientHash}`);
+    } else {
+      const msg = "Not enough secret history to generate client hash.";
+      setLastClientHash(msg);
+      console.warn(msg);
+    }
+
+    // --- 2. Request a Server-Side Hash for Comparison ---
+    console.log("Requesting a new hash from the server...");
+    // CORRECTED: Calling the reducer via the `conn.reducers` object.
+    conn.reducers.hashRandomAtServer();
+  };
+
+  // --- Render Logic ---
+
+  if (!connected || !wasmInitialized) {
+    return <div className="App"><h1>Connecting & Initializing...</h1></div>;
   }
-
-  const name =
-    users.get(identity?.toHexString())?.name ||
-    identity?.toHexString().substring(0, 8) ||
-    'unknown';
-
-  const onSubmitNewName = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setSettingName(false);
-    conn.reducers.setName(newName);
-  };
-
-  const onMessageSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setNewMessage("");
-    conn.reducers.sendMessage(newMessage);
-  };
-
-  const onGenerateSeed = () => {
-    setNewMessage("");
-    conn.reducers.getRandomSeed(newMessage); // call hash sha256 at server
-    console.log(hash_sha256_wasm(newMessage)); // call hash sha256 at client
-  };
 
   return (
     <div className="App">
-      <div className="profile">
-        <h1>Profile</h1>
-        {!settingName ? (
-          <>
-            <p>{name}</p>
-            <button
-              onClick={() => {
-                setSettingName(true);
-                setNewName(name);
-              }}
-            >
-              Edit Name
-            </button>
-          </>
-        ) : (
-          <form onSubmit={onSubmitNewName}>
-            <input
-              type="text"
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-            />
-            <button type="submit">Submit</button>
-          </form>
-        )}
+      <h1>SpacetimeDB Synchronized Hashing</h1>
+      <p>Identity: <code>{identity?.toHexString()}</code></p>
+      
+      <div className="action-panel">
+        <button onClick={handleGenerateHashes}>Generate Client & Server Hashes</button>
+        <h3>Last Client-Side Hash:</h3>
+        <p className="hash-display">{lastClientHash || 'N/A'}</p>
       </div>
-      <div className="message">
-        <h1>Messages</h1>
-        {prettyMessages.length < 1 && <p>No messages</p>}
-        <div>
-          {prettyMessages.map((message, key) => (
-            <div key={key}>
-              <p>
-                <b>{message.senderName}</b>
+
+      <div className="data-display">
+        <div className="column">
+          <h2>Secret History (from Server)</h2>
+          <div className="log-box">
+            {secretHistory.slice(-10).reverse().map((secret) => (
+              <p key={secret.version.toString()}>
+                <b>Time:</b> {new Date(Number(secret.validFromTimeMicros / 1000n)).toLocaleTimeString()}
+                <b> Secret:</b> <code>{secret.value.substring(0, 12)}...</code>
               </p>
-              <p>{message.text}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="system" style={{ whiteSpace: 'pre-wrap' }}>
-        <h1>System</h1>
-        <div>
-          <p>{systemMessage}</p>
-        </div>
-      </div>
-      <div className="new-message">
-        <form
-          onSubmit={onMessageSubmit}
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            width: '50%',
-            margin: '0 auto',
-          }}
-        >
-          <h3>New Message</h3>
-          <textarea
-            value={newMessage}
-            onChange={e => setNewMessage(e.target.value)}
-          ></textarea>
-          <div className="columns">
-            <button type="submit">Send</button>
-            <button onClick={onGenerateSeed}>Generate</button>
+            ))}
           </div>
-        </form>
+        </div>
+        <div className="column">
+          <h2>Server Hash Log (Your Requests)</h2>
+          <div className="log-box">
+            {serverHashLog.slice(0, 10).map((log) => (
+              <p key={log.requestId.toString()}>
+                <b>Time:</b> {new Date(Number(log.timestampMs)).toLocaleTimeString()}
+                <b> Hash:</b> <code>{log.hashValue.substring(0, 12)}...</code>
+              </p>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
